@@ -1,0 +1,930 @@
+--========================================================
+--                         EGO
+--          SERVER + GLOBAL CHAT + COMMANDS + TITLES
+--========================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MessagingService = game:GetService("MessagingService")
+local DataStoreService = game:GetService("DataStoreService")
+
+local PREFIX = "/"
+local GLOBAL_TOPIC = "EGO_GLOBAL_CHAT_V1"
+
+local BanStore = DataStoreService:GetDataStore("EGO_BANS_V1")
+local AdminStore = DataStoreService:GetDataStore("EGO_ADMINS_V1")
+local TitleStore = DataStoreService:GetDataStore("EGO_TITLES_V1")
+
+--========================================================
+-- REMOTES
+--========================================================
+
+local folder = ReplicatedStorage:FindFirstChild("EGO_Remotes")
+if not folder then
+	folder = Instance.new("Folder")
+	folder.Name = "EGO_Remotes"
+	folder.Parent = ReplicatedStorage
+end
+
+local ChatEvent = folder:FindFirstChild("ChatEvent") or Instance.new("RemoteEvent")
+ChatEvent.Name = "ChatEvent"
+ChatEvent.Parent = folder
+
+local SystemEvent = folder:FindFirstChild("SystemEvent") or Instance.new("RemoteEvent")
+SystemEvent.Name = "SystemEvent"
+SystemEvent.Parent = folder
+
+--========================================================
+-- TITLES
+--========================================================
+
+local TITLES = {
+	["ARCHITECT💻"] = "RAINBOW",
+	["H4CKER🧑‍💻"] = "GREEN",
+	["--khalnayak--"] = "PURPLE",
+	["--danav--"] = "RED",
+	["DISB4NDER💀"] = "BLUE",
+	["OG"] = "RAINBOW",
+	["AUKAT KE BAHAR"] = "RAINBOW",
+	["4BUSIVE"] = "BLACK",
+	["DADDY"] = "BLACK",
+	["MOMMY"] = "BLACK",
+	["STAFF🧑‍🔧"] = "BLACK",
+
+	["ELITE"] = "BLACK",
+	["his"] = "BLACK",
+	["her"] = "BLACK",
+	["badnam"] = "BLACK",
+	["majdoor👷🔨"] = "BLACK",
+	["VIP"] = "BLACK",
+	["PREMIUM"] = "BLACK",
+}
+
+local function getTitleColor(title)
+	if title == "H4CKER🧑‍💻" then
+		return Color3.fromRGB(0,255,80)
+	elseif title == "--khalnayak--" then
+		return Color3.fromRGB(170,0,255)
+	elseif title == "--danav--" then
+		return Color3.fromRGB(255,0,0)
+	elseif title == "DISB4NDER💀" then
+		return Color3.fromRGB(0,150,255)
+	elseif TITLES[title] == "RAINBOW" then
+		return Color3.fromRGB(255,255,255)
+	end
+
+	return Color3.fromRGB(0,0,0)
+end
+
+--========================================================
+-- CREATOR / PERMISSIONS
+--========================================================
+
+local CREATOR_ID = game.CreatorId
+
+local admins = {}
+
+local function isArchitect(player)
+	return player.UserId == CREATOR_ID or admins[player.UserId] == "ARCHITECT"
+end
+
+local function isStaff(player)
+	return isArchitect(player) or admins[player.UserId] == "STAFF"
+end
+
+local function isHacker(player)
+	return admins[player.UserId] == "H4CKER"
+end
+
+local function hasAllCommands(player)
+	return isArchitect(player) or isStaff(player)
+end
+
+--========================================================
+-- LOAD ADMIN
+--========================================================
+
+local function loadAdmin(player)
+	local success, result = pcall(function()
+		return AdminStore:GetAsync(tostring(player.UserId))
+	end)
+
+	if success and result then
+		admins[player.UserId] = result
+	end
+end
+
+--========================================================
+-- BAN CHECK
+--========================================================
+
+local function checkBan(player)
+	local success, data = pcall(function()
+		return BanStore:GetAsync(tostring(player.UserId))
+	end)
+
+	if success and data then
+		player:Kick("You are banned from EGO.")
+	end
+end
+
+--========================================================
+-- TITLE
+--========================================================
+
+local function applyTitle(player, title)
+	if not TITLES[title] then
+		return false
+	end
+
+	local old = player:FindFirstChild("EGO_Title")
+
+	if old then
+		old.Value = title
+	else
+		local value = Instance.new("StringValue")
+		value.Name = "EGO_Title"
+		value.Value = title
+		value.Parent = player
+	end
+
+	local success = pcall(function()
+		TitleStore:SetAsync(tostring(player.UserId), title)
+	end)
+
+	return success
+end
+
+local function loadTitle(player)
+	local success, title = pcall(function()
+		return TitleStore:GetAsync(tostring(player.UserId))
+	end)
+
+	if success and title and TITLES[title] then
+		applyTitle(player, title)
+	end
+end
+
+--========================================================
+-- CHARACTER TITLE TAG
+--========================================================
+
+local function createTitleTag(player, character)
+	local head = character:WaitForChild("Head", 10)
+	if not head then return end
+
+	local old = head:FindFirstChild("EGO_TitleTag")
+	if old then
+		old:Destroy()
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "EGO_TitleTag"
+	billboard.Size = UDim2.new(0,220,0,45)
+	billboard.StudsOffset = Vector3.new(0,3,0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = head
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1,1)
+	label.BackgroundTransparency = 1
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.TextStrokeTransparency = 0.2
+	label.Parent = billboard
+
+	local titleValue = player:FindFirstChild("EGO_Title")
+
+	if titleValue then
+		label.Text = titleValue.Value
+		label.TextColor3 = getTitleColor(titleValue.Value)
+
+		if TITLES[titleValue.Value] == "RAINBOW" then
+			task.spawn(function()
+				local hue = 0
+
+				while label.Parent and player.Parent do
+					hue = (hue + 0.01) % 1
+					label.TextColor3 = Color3.fromHSV(hue,1,1)
+					task.wait(0.03)
+				end
+			end)
+		end
+	end
+end
+
+--========================================================
+-- FIND PLAYER
+--========================================================
+
+local function findPlayer(text)
+	if not text then return nil end
+
+	text = text:lower()
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Name:lower() == text or player.DisplayName:lower() == text then
+			return player
+		end
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Name:lower():sub(1,#text) == text then
+			return player
+		end
+	end
+end
+
+--========================================================
+-- FLY
+--========================================================
+
+local flying = {}
+
+local function toggleFly(player)
+	flying[player] = not flying[player]
+
+	SystemEvent:FireClient(player,"FLY",flying[player])
+end
+
+--========================================================
+-- COMMANDS
+--========================================================
+
+local function command(player, message)
+
+	if message:sub(1,1) ~= PREFIX then
+		return
+	end
+
+	local args = string.split(message," ")
+	local cmd = args[1]:lower()
+
+	table.remove(args,1)
+
+	--====================================================
+	-- FLY
+	-- ARCHITECT / STAFF / H4CKER
+	--====================================================
+
+	if cmd == "/fly" then
+
+		if hasAllCommands(player) or isHacker(player) then
+			toggleFly(player)
+		else
+			SystemEvent:FireClient(player,"ERROR","You don't have permission.")
+		end
+
+		return
+	end
+
+	--====================================================
+	-- ALL OTHER COMMANDS
+	-- ARCHITECT + STAFF ONLY
+	--====================================================
+
+	if not hasAllCommands(player) then
+		SystemEvent:FireClient(player,"ERROR","You don't have permission.")
+		return
+	end
+
+	--====================================================
+	-- BAN
+	--====================================================
+
+	if cmd == "/ban" then
+
+		local target = findPlayer(args[1])
+
+		if target then
+			pcall(function()
+				BanStore:SetAsync(tostring(target.UserId),true)
+			end)
+
+			target:Kick("You have been banned from EGO.")
+		end
+
+	--====================================================
+	-- UNBAN
+	--====================================================
+
+	elseif cmd == "/unban" then
+
+		local userId = tonumber(args[1])
+
+		if userId then
+			pcall(function()
+				BanStore:RemoveAsync(tostring(userId))
+			end)
+		end
+
+	--====================================================
+	-- MUTE
+	--====================================================
+
+	elseif cmd == "/mute" then
+
+		local target = findPlayer(args[1])
+
+		if target then
+			local mute = target:FindFirstChild("EGO_Muted")
+
+			if not mute then
+				mute = Instance.new("BoolValue")
+				mute.Name = "EGO_Muted"
+				mute.Parent = target
+			end
+
+			mute.Value = true
+			SystemEvent:FireAllClients(
+				"NOTICE",
+				target.DisplayName.." was muted."
+			)
+		end
+
+	--====================================================
+	-- UNMUTE
+	--====================================================
+
+	elseif cmd == "/unmute" then
+
+		local target = findPlayer(args[1])
+
+		if target then
+			local mute = target:FindFirstChild("EGO_Muted")
+
+			if mute then
+				mute.Value = false
+			end
+		end
+
+	--====================================================
+	-- ANNOUNCEMENT
+	--====================================================
+
+	elseif cmd == "/announcement" then
+
+		local text = table.concat(args," ")
+
+		if text ~= "" then
+			SystemEvent:FireAllClients("ANNOUNCEMENT",text)
+
+			pcall(function()
+				MessagingService:PublishAsync(
+					GLOBAL_TOPIC,
+					{
+						Type = "ANNOUNCEMENT",
+						Message = text,
+						From = player.DisplayName
+					}
+				)
+			end)
+		end
+
+	--====================================================
+	-- NOCLIP
+	--====================================================
+
+	elseif cmd == "/noclip" then
+
+		SystemEvent:FireClient(player,"NOCLIP")
+
+	--====================================================
+	-- GIVE TITLE
+	--====================================================
+
+	elseif cmd == "/givetitles" then
+
+		local target = findPlayer(args[1])
+		local title = table.concat(args," ",2)
+
+		if target and TITLES[title] then
+			applyTitle(target,title)
+
+			if target.Character then
+				createTitleTag(target,target.Character)
+			end
+
+			SystemEvent:FireAllClients(
+				"NOTICE",
+				target.DisplayName.." received "..title
+			)
+		end
+
+	--====================================================
+	-- GIVE ADMIN
+	-- ONLY ARCHITECT
+	--====================================================
+
+	elseif cmd == "/giveadmin" then
+
+		if not isArchitect(player) then
+			SystemEvent:FireClient(player,"ERROR","Only ARCHITECT can use /giveadmin.")
+			return
+		end
+
+		local target = findPlayer(args[1])
+		local rank = args[2] or "STAFF"
+
+		if target and (rank == "STAFF" or rank == "H4CKER") then
+
+			admins[target.UserId] = rank
+
+			pcall(function()
+				AdminStore:SetAsync(
+					tostring(target.UserId),
+					rank
+				)
+			end)
+
+			SystemEvent:FireAllClients(
+				"NOTICE",
+				target.DisplayName.." is now "..rank
+			)
+		end
+	end
+end
+
+--========================================================
+-- SERVER CHAT
+--========================================================
+
+local function sendServerMessage(player,message)
+
+	local muted = player:FindFirstChild("EGO_Muted")
+
+	if muted and muted.Value then
+		return
+	end
+
+	local title = "ELITE"
+	local titleValue = player:FindFirstChild("EGO_Title")
+
+	if titleValue then
+		title = titleValue.Value
+	end
+
+	ChatEvent:FireAllClients(
+		"SERVER",
+		player.DisplayName,
+		message,
+		title
+	)
+end
+
+--========================================================
+-- GLOBAL CHAT
+--========================================================
+
+local function publishGlobal(player,message)
+
+	local muted = player:FindFirstChild("EGO_Muted")
+
+	if muted and muted.Value then
+		return
+	end
+
+	local title = "ELITE"
+	local titleValue = player:FindFirstChild("EGO_Title")
+
+	if titleValue then
+		title = titleValue.Value
+	end
+
+	pcall(function()
+		MessagingService:PublishAsync(
+			GLOBAL_TOPIC,
+			{
+				Type = "CHAT",
+				User = player.DisplayName,
+				Message = message,
+				Title = title
+			}
+		)
+	end)
+end
+
+--========================================================
+-- MESSAGING SERVICE
+--========================================================
+
+pcall(function()
+
+	MessagingService:SubscribeAsync(
+		GLOBAL_TOPIC,
+		function(data)
+
+			local info = data.Data
+
+			if info.Type == "CHAT" then
+
+				ChatEvent:FireAllClients(
+					"GLOBAL",
+					info.User,
+					info.Message,
+					info.Title
+				)
+
+			elseif info.Type == "ANNOUNCEMENT" then
+
+				SystemEvent:FireAllClients(
+					"ANNOUNCEMENT",
+					info.Message
+				)
+			end
+		end
+	)
+
+end)
+
+--========================================================
+-- PLAYER
+--========================================================
+
+Players.PlayerAdded:Connect(function(player)
+
+	loadAdmin(player)
+	checkBan(player)
+	loadTitle(player)
+
+	player.CharacterAdded:Connect(function(character)
+		task.wait(1)
+		createTitleTag(player,character)
+	end)
+
+	player.Chatted:Connect(function(message)
+
+		if message:sub(1,1) == "/" then
+			command(player,message)
+		else
+			sendServerMessage(player,message)
+		end
+	end)
+
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	flying[player] = nil
+end) 
+--========================================================
+--                     EGO CLIENT
+--       LOADING + SERVER/GLOBAL CHAT UI
+--========================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local Remotes = ReplicatedStorage:WaitForChild("EGO_Remotes")
+
+local ChatEvent = Remotes:WaitForChild("ChatEvent")
+local SystemEvent = Remotes:WaitForChild("SystemEvent")
+
+-- Hide default Roblox chat
+pcall(function()
+	StarterGui:SetCoreGuiEnabled(
+		Enum.CoreGuiType.Chat,
+		false
+	)
+end)
+
+--========================================================
+-- LOADING SCREEN
+--========================================================
+
+local loading = Instance.new("ScreenGui")
+loading.Name = "EGO_Loading"
+loading.IgnoreGuiInset = true
+loading.ResetOnSpawn = false
+loading.Parent = player:WaitForChild("PlayerGui")
+
+local background = Instance.new("Frame")
+background.Size = UDim2.fromScale(1,1)
+background.BackgroundColor3 = Color3.fromRGB(5,5,8)
+background.Parent = loading
+
+local logo = Instance.new("TextLabel")
+logo.Size = UDim2.new(1,0,0,100)
+logo.Position = UDim2.new(0,0,0.35,0)
+logo.BackgroundTransparency = 1
+logo.Text = "EGO"
+logo.TextColor3 = Color3.fromRGB(255,30,30)
+logo.Font = Enum.Font.GothamBlack
+logo.TextScaled = true
+logo.Parent = background
+
+local sub = Instance.new("TextLabel")
+sub.Size = UDim2.new(1,0,0,40)
+sub.Position = UDim2.new(0,0,0.47,0)
+sub.BackgroundTransparency = 1
+sub.Text = "SAME GAME  |  BETTER VIBES  |  EGO"
+sub.TextColor3 = Color3.new(1,1,1)
+sub.Font = Enum.Font.GothamBold
+sub.TextScaled = true
+sub.Parent = background
+
+local barBack = Instance.new("Frame")
+barBack.Size = UDim2.new(0.45,0,0,8)
+barBack.Position = UDim2.new(0.275,0,0.58,0)
+barBack.BackgroundColor3 = Color3.fromRGB(35,35,35)
+barBack.Parent = background
+
+local bar = Instance.new("Frame")
+bar.Size = UDim2.new(0,0,1,0)
+bar.BackgroundColor3 = Color3.fromRGB(255,0,0)
+bar.Parent = barBack
+
+for i = 1,100 do
+	bar.Size = UDim2.new(i/100,0,1,0)
+	task.wait(0.015)
+end
+
+loading:Destroy()
+
+--========================================================
+-- MAIN GUI
+--========================================================
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "EGO_Chat"
+gui.ResetOnSpawn = false
+gui.Parent = player.PlayerGui
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0,520,0,430)
+main.Position = UDim2.new(0,25,0.5,-215)
+main.BackgroundColor3 = Color3.fromRGB(10,10,14)
+main.BackgroundTransparency = 0.08
+main.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0,14)
+corner.Parent = main
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,0,0,55)
+title.BackgroundTransparency = 1
+title.Text = "EGO  •  CHAT"
+title.TextColor3 = Color3.fromRGB(255,40,40)
+title.Font = Enum.Font.GothamBlack
+title.TextScaled = true
+title.Parent = main
+
+local serverButton = Instance.new("TextButton")
+serverButton.Size = UDim2.new(0.45,0,0,40)
+serverButton.Position = UDim2.new(0.03,0,0,60)
+serverButton.Text = "SERVER"
+serverButton.TextColor3 = Color3.new(1,1,1)
+serverButton.BackgroundColor3 = Color3.fromRGB(180,0,0)
+serverButton.Font = Enum.Font.GothamBold
+serverButton.TextScaled = true
+serverButton.Parent = main
+
+local globalButton = serverButton:Clone()
+globalButton.Position = UDim2.new(0.52,0,0,60)
+globalButton.Text = "GLOBAL"
+globalButton.BackgroundColor3 = Color3.fromRGB(30,30,35)
+globalButton.Parent = main
+
+local messages = Instance.new("ScrollingFrame")
+messages.Size = UDim2.new(0.94,0,0,245)
+messages.Position = UDim2.new(0.03,0,0,110)
+messages.BackgroundColor3 = Color3.fromRGB(3,3,6)
+messages.BorderSizePixel = 0
+messages.ScrollBarThickness = 5
+messages.Parent = main
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0,4)
+layout.Parent = messages
+
+local input = Instance.new("TextBox")
+input.Size = UDim2.new(0.82,0,0,45)
+input.Position = UDim2.new(0.03,0,1,-55)
+input.PlaceholderText = "Type a message..."
+input.Text = ""
+input.TextColor3 = Color3.new(1,1,1)
+input.BackgroundColor3 = Color3.fromRGB(25,25,30)
+input.Font = Enum.Font.Gotham
+input.TextSize = 16
+input.Parent = main
+
+local send = Instance.new("TextButton")
+send.Size = UDim2.new(0.11,0,0,45)
+send.Position = UDim2.new(0.86,0,1,-55)
+send.Text = "➤"
+send.TextScaled = true
+send.TextColor3 = Color3.new(1,1,1)
+send.BackgroundColor3 = Color3.fromRGB(200,0,0)
+send.Font = Enum.Font.GothamBold
+send.Parent = main
+
+--========================================================
+-- CHAT MODE
+--========================================================
+
+local mode = "SERVER"
+
+local function addMessage(chatType,user,message,userTitle)
+
+	if chatType ~= mode then
+		return
+	end
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1,-10,0,30)
+	label.BackgroundTransparency = 1
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextWrapped = true
+	label.Text = "["..userTitle.."] "..user..": "..message
+	label.TextColor3 = Color3.new(1,1,1)
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 15
+	label.Parent = messages
+
+	task.wait()
+
+	messages.CanvasPosition = Vector2.new(
+		0,
+		messages.AbsoluteCanvasSize.Y
+	)
+end
+
+ChatEvent.OnClientEvent:Connect(addMessage)
+
+serverButton.MouseButton1Click:Connect(function()
+	mode = "SERVER"
+
+	serverButton.BackgroundColor3 = Color3.fromRGB(180,0,0)
+	globalButton.BackgroundColor3 = Color3.fromRGB(30,30,35)
+end)
+
+globalButton.MouseButton1Click:Connect(function()
+	mode = "GLOBAL"
+
+	globalButton.BackgroundColor3 = Color3.fromRGB(180,0,0)
+	serverButton.BackgroundColor3 = Color3.fromRGB(30,30,35)
+end)
+
+send.MouseButton1Click:Connect(function()
+
+	if input.Text == "" then
+		return
+	end
+
+	-- Normal Roblox chat event
+	local text = input.Text
+
+	-- Commands are sent through Player.Chatted.
+	-- Global chat can be activated with /global <message>
+	if text:sub(1,8):lower() == "/global " then
+		local msg = text:sub(9)
+
+		-- Roblox chat command is handled by server
+		game:GetService("ReplicatedStorage"):WaitForChild("DefaultChatSystemChatEvents")
+	end
+
+	-- Send using Roblox chat
+	local success = pcall(function()
+		game:GetService("TextChatService").TextChannels.RBXGeneral:SendAsync(text)
+	end)
+
+	input.Text = ""
+end)
+
+input.FocusLost:Connect(function(enterPressed)
+
+	if enterPressed and input.Text ~= "" then
+		local text = input.Text
+
+		pcall(function()
+			game:GetService("TextChatService")
+				.TextChannels
+				.RBXGeneral
+				:SendAsync(text)
+		end)
+
+		input.Text = ""
+	end
+end)
+
+--========================================================
+-- SYSTEM MESSAGES
+--========================================================
+
+SystemEvent.OnClientEvent:Connect(function(kind,message)
+
+	if kind == "ERROR" or kind == "NOTICE" then
+
+		local notification = Instance.new("TextLabel")
+		notification.Size = UDim2.new(0,400,0,50)
+		notification.Position = UDim2.new(0.5,-200,0.08,0)
+		notification.BackgroundColor3 = Color3.fromRGB(15,15,20)
+		notification.TextColor3 = Color3.new(1,1,1)
+		notification.Text = message
+		notification.TextScaled = true
+		notification.Font = Enum.Font.GothamBold
+		notification.Parent = gui
+
+		task.delay(3,function()
+			notification:Destroy()
+		end)
+
+	elseif kind == "ANNOUNCEMENT" then
+
+		local announcement = Instance.new("TextLabel")
+		announcement.Size = UDim2.new(0,700,0,80)
+		announcement.Position = UDim2.new(0.5,-350,0.1,0)
+		announcement.BackgroundColor3 = Color3.fromRGB(150,0,0)
+		announcement.TextColor3 = Color3.new(1,1,1)
+		announcement.Text = "📢 EGO ANNOUNCEMENT\n"..message
+		announcement.TextScaled = true
+		announcement.Font = Enum.Font.GothamBlack
+		announcement.Parent = gui
+
+		task.delay(5,function()
+			announcement:Destroy()
+		end)
+	end
+end)
+
+--========================================================
+-- SIMPLE FLY
+--========================================================
+
+local flying = false
+
+SystemEvent.OnClientEvent:Connect(function(kind,value)
+
+	if kind ~= "FLY" then
+		return
+	end
+
+	flying = value
+
+	local character = player.Character
+	if not character then return end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	if flying then
+
+		local bv = Instance.new("BodyVelocity")
+		bv.Name = "EGO_Fly"
+		bv.MaxForce = Vector3.new(100000,100000,100000)
+		bv.Velocity = Vector3.new(0,0,0)
+		bv.Parent = root
+
+		task.spawn(function()
+
+			while flying and bv.Parent do
+
+				local camera = workspace.CurrentCamera
+				local move = Vector3.new()
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+					move += camera.CFrame.LookVector
+				end
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+					move -= camera.CFrame.LookVector
+				end
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+					move -= camera.CFrame.RightVector
+				end
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+					move += camera.CFrame.RightVector
+				end
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+					move += Vector3.new(0,1,0)
+				end
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+					move -= Vector3.new(0,1,0)
+				end
+
+				bv.Velocity = move * 60
+
+				task.wait()
+			end
+
+			if bv then
+				bv:Destroy()
+			end
+		end)
+
+	else
+
+		local bv = root:FindFirstChild("EGO_Fly")
+
+		if bv then
+			bv:Destroy()
+		end
+	end
+end)
